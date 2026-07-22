@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#05070b" />
+  <title>CardLens AI</title>
+  <style>
+    :root{--bg:#05070b;--panel:rgba(8,12,20,.82);--line:#65ff91;--text:#f7f9ff;--muted:#aab3c5;--accent:#7c9cff;--danger:#ff6b7d}
+    *{box-sizing:border-box} html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;overflow:hidden}
+    #app{height:100%;position:relative;background:#000}
+    video,canvas#preview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    video{transform:translateZ(0);backface-visibility:hidden}
+    #preview{pointer-events:none}
+    .shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(rgba(0,0,0,.26),transparent 20%,transparent 72%,rgba(0,0,0,.45))}
+    .top{position:absolute;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 14px) 18px 10px;display:flex;justify-content:space-between;align-items:center;z-index:5}
+    .brand{font-weight:800;letter-spacing:.2px}.badge{font-size:12px;color:#d9ffe3;background:rgba(23,87,45,.72);border:1px solid rgba(101,255,145,.45);padding:7px 10px;border-radius:999px}
+    .guide-wrap{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;z-index:3}
+    .guide{width:min(78vw,360px);aspect-ratio:0.69;border:3px solid var(--line);border-radius:20px;box-shadow:0 0 0 9999px rgba(0,0,0,.25),0 0 24px rgba(101,255,145,.25);transition:border-color .2s,transform .2s}
+    .guide.pack{aspect-ratio:.62}.guide.ready{transform:scale(1.012);border-color:#fff}
+    .corner{position:absolute;width:34px;height:34px;border-color:#fff;border-style:solid}.c1{left:-4px;top:-4px;border-width:5px 0 0 5px;border-radius:18px 0 0 0}.c2{right:-4px;top:-4px;border-width:5px 5px 0 0;border-radius:0 18px 0 0}.c3{left:-4px;bottom:-4px;border-width:0 0 5px 5px;border-radius:0 0 0 18px}.c4{right:-4px;bottom:-4px;border-width:0 5px 5px 0;border-radius:0 0 18px 0}
+    .scanline{position:absolute;left:5%;right:5%;height:2px;top:10%;background:linear-gradient(90deg,transparent,#fff,transparent);opacity:.8;animation:scan 2.2s linear infinite}@keyframes scan{0%{top:8%}50%{top:90%}100%{top:8%}}
+    .status{position:absolute;left:18px;right:18px;bottom:calc(env(safe-area-inset-bottom) + 22px);z-index:6;background:var(--panel);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:16px;box-shadow:0 16px 50px rgba(0,0,0,.35)}
+    .headline{font-size:20px;font-weight:800;text-align:center}.sub{font-size:13px;color:var(--muted);text-align:center;margin-top:6px;line-height:1.45}
+    .progress{height:7px;background:rgba(255,255,255,.1);border-radius:999px;margin:14px 0 12px;overflow:hidden}.bar{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--line));transition:width .12s linear}
+    .actions{display:flex;gap:10px}.btn{appearance:none;border:0;border-radius:16px;padding:13px 16px;font-size:15px;font-weight:800;flex:1}.primary{background:#fff;color:#080b12}.secondary{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.12)}
+    .hidden{display:none!important}
+    #result{position:absolute;inset:0;z-index:20;background:linear-gradient(180deg,#0a0e17,#05070b);overflow:auto;padding:calc(env(safe-area-inset-top) + 20px) 18px calc(env(safe-area-inset-bottom) + 28px)}
+    .result-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}.result-title{font-size:25px;font-weight:900}.close{width:42px;height:42px;border-radius:50%;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:#fff;font-size:22px}
+    .hero{background:linear-gradient(135deg,rgba(124,156,255,.22),rgba(101,255,145,.12));border:1px solid rgba(255,255,255,.13);border-radius:24px;padding:20px}.name{font-size:24px;font-weight:900}.meta{color:var(--muted);margin-top:6px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:18px;padding:15px}.label{font-size:12px;color:var(--muted)}.value{font-size:19px;font-weight:900;margin-top:5px}.full{grid-column:1/-1}.warn{font-size:12px;color:#ffc3ca;line-height:1.5;margin-top:14px;background:rgba(255,107,125,.08);padding:12px;border-radius:14px}
+    #captureCanvas,#motionCanvas{display:none}
+  </style>
+</head>
+<body>
+<div id="app">
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="preview"></canvas>
+  <canvas id="captureCanvas"></canvas><canvas id="motionCanvas" width="64" height="96"></canvas>
+  <div class="shade"></div>
+  <div class="top"><div class="brand">CardLens AI</div><div class="badge" id="stepBadge">앞면 1/2</div></div>
+  <div class="guide-wrap"><div class="guide" id="guide"><i class="corner c1"></i><i class="corner c2"></i><i class="corner c3"></i><i class="corner c4"></i><i class="scanline"></i></div></div>
+  <section class="status" id="statusPanel">
+    <div class="headline" id="headline">카드 또는 팩을 틀 안에 맞춰주세요</div>
+    <div class="sub" id="subline">흔들림이 멈추면 앞면이 자동 촬영됩니다.</div>
+    <div class="progress"><div class="bar" id="bar"></div></div>
+    <div class="actions"><button class="btn secondary" id="typeBtn">가이드: 카드</button><button class="btn primary" id="manualBtn">지금 촬영</button></div>
+  </section>
+  <section id="result" class="hidden">
+    <div class="result-head"><div class="result-title">AI 분석 결과</div><button class="close" id="closeBtn">×</button></div>
+    <div class="hero"><div class="name" id="rName">분석 중...</div><div class="meta" id="rMeta"></div></div>
+    <div class="grid">
+      <div class="card"><div class="label">대상</div><div class="value" id="rType">-</div></div>
+      <div class="card"><div class="label">AI 신뢰도</div><div class="value" id="rConfidence">-</div></div>
+      <div class="card"><div class="label">예상 등급</div><div class="value" id="rGrade">-</div></div>
+      <div class="card"><div class="label">Raw 예상가</div><div class="value" id="rRaw">-</div></div>
+      <div class="card"><div class="label">PSA 9 예상가</div><div class="value" id="rPsa9">-</div></div>
+      <div class="card"><div class="label">PSA 10 예상가</div><div class="value" id="rPsa10">-</div></div>
+      <div class="card full"><div class="label">진품 가능성 / 재포장 위험</div><div class="value" id="rAuth">-</div></div>
+      <div class="card full"><div class="label">AI 관찰 내용</div><div id="rNotes" style="margin-top:7px;line-height:1.55;color:#dce2ef"></div></div>
+    </div>
+    <div class="warn">사진만으로 진품 여부나 PSA 등급을 확정할 수 없습니다. 가격은 시장·언어·상태·거래 시점에 따라 달라지는 AI 추정치입니다.</div>
+  </section>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+const video=$('#video'), guide=$('#guide'), bar=$('#bar'), headline=$('#headline'), subline=$('#subline');
+const motionCanvas=$('#motionCanvas'), mctx=motionCanvas.getContext('2d',{willReadFrequently:true});
+const captureCanvas=$('#captureCanvas'), cctx=captureCanvas.getContext('2d');
+let front=null, back=null, phase='front', lastPixels=null, stable=0, movedAfterFront=false, guideMode='card', busy=false, loopId=0;
+
+function speak(text){try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='ko-KR';u.rate=.95;speechSynthesis.speak(u)}catch(e){}}
+function setText(h,s){headline.textContent=h;subline.textContent=s}
+async function startCamera(){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+    video.srcObject=stream; await video.play(); loop();
+  }catch(e){setText('카메라를 열 수 없습니다','Safari 설정에서 카메라 권한을 허용해주세요.');}
+}
+function guideRectOnVideo(){
+  const vr=video.getBoundingClientRect(), gr=guide.getBoundingClientRect();
+  const vw=video.videoWidth, vh=video.videoHeight, scale=Math.max(vr.width/vw,vr.height/vh);
+  const shownW=vw*scale, shownH=vh*scale, cropX=(shownW-vr.width)/2, cropY=(shownH-vr.height)/2;
+  return {x:(gr.left-vr.left+cropX)/scale,y:(gr.top-vr.top+cropY)/scale,w:gr.width/scale,h:gr.height/scale};
+}
+function capture(){
+  if(!video.videoWidth) return null;
+  const r=guideRectOnVideo(); captureCanvas.width=900; captureCanvas.height=Math.round(900*r.h/r.w);
+  cctx.drawImage(video,r.x,r.y,r.w,r.h,0,0,captureCanvas.width,captureCanvas.height);
+  return captureCanvas.toDataURL('image/jpeg',.86);
+}
+function motionScore(){
+  mctx.drawImage(video,0,0,motionCanvas.width,motionCanvas.height);
+  const data=mctx.getImageData(0,0,motionCanvas.width,motionCanvas.height).data;
+  const gray=new Uint8Array(data.length/16); let k=0;
+  for(let i=0;i<data.length;i+=16) gray[k++]=(data[i]+data[i+1]+data[i+2])/3;
+  if(!lastPixels){lastPixels=gray;return 999}
+  let diff=0;for(let i=0;i<gray.length;i++)diff+=Math.abs(gray[i]-lastPixels[i]);
+  lastPixels=gray;return diff/gray.length;
+}
+function loop(){
+  cancelAnimationFrame(loopId);let last=0;
+  const tick=t=>{loopId=requestAnimationFrame(tick);if(busy||t-last<120||video.readyState<2)return;last=t;
+    const score=motionScore();
+    if(phase==='back' && score>11)movedAfterFront=true;
+    const eligible=phase==='front'||movedAfterFront;
+    if(score<4.3&&eligible)stable=Math.min(100,stable+12);else stable=Math.max(0,stable-16);
+    bar.style.width=stable+'%';guide.classList.toggle('ready',stable>78);
+    if(stable>=100){stable=0;takeStep()}
+  };loopId=requestAnimationFrame(tick)
+}
+async function takeStep(){
+  if(busy)return;
+  const img=capture();if(!img)return;
+  if(phase==='front'){
+    front=img;phase='back';movedAfterFront=false;lastPixels=null;
+    $('#stepBadge').textContent='뒷면 2/2';setText('뒤집어 주세요','카드 또는 팩의 뒷면을 같은 틀 안에 맞춰주세요.');speak('뒤집어 주세요');
+  }else{back=img;await analyze()}
+}
+async function analyze(){
+  busy=true;setText('AI가 한 번에 분석하고 있어요','대상 인식, 등급, 가격, 진품 가능성을 확인 중입니다.');bar.style.width='100%';
+  try{
+    const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({front,back,guideMode})});
+    const data=await res.json();if(!res.ok)throw new Error(data.error||'분석 실패');showResult(data);
+  }catch(e){
+    alert('AI 서버 연결에 실패했습니다. Vercel 배포와 OPENAI_API_KEY 설정을 확인해주세요.\n\n'+e.message);reset();
+  }finally{busy=false}
+}
+function money(v){return v||'판단 어려움'}
+function showResult(d){
+  $('#rName').textContent=d.name||'식별 불확실';$('#rMeta').textContent=[d.set,d.number,d.rarity].filter(Boolean).join(' · ');
+  $('#rType').textContent=d.object_type==='pack'?'카드팩':'카드';$('#rConfidence').textContent=Math.round((d.identification_confidence||0)*100)+'%';
+  $('#rGrade').textContent=d.estimated_grade||'판단 어려움';$('#rRaw').textContent=money(d.raw_price_estimate);$('#rPsa9').textContent=money(d.psa9_price_estimate);$('#rPsa10').textContent=money(d.psa10_price_estimate);
+  $('#rAuth').textContent=`진품 ${Math.round((d.authenticity_probability||0)*100)}% · 재포장 위험 ${Math.round((d.reseal_risk||0)*100)}%`;
+  $('#rNotes').textContent=(d.notes||[]).join(' · ')||'추가 관찰 내용 없음';$('#result').classList.remove('hidden');
+}
+function reset(){front=back=null;phase='front';stable=0;movedAfterFront=false;lastPixels=null;bar.style.width='0';$('#stepBadge').textContent='앞면 1/2';setText('카드 또는 팩을 틀 안에 맞춰주세요','흔들림이 멈추면 앞면이 자동 촬영됩니다.');}
+$('#manualBtn').onclick=takeStep;$('#closeBtn').onclick=()=>{$('#result').classList.add('hidden');reset()};
+$('#typeBtn').onclick=()=>{guideMode=guideMode==='card'?'pack':'card';guide.classList.toggle('pack',guideMode==='pack');$('#typeBtn').textContent='가이드: '+(guideMode==='pack'?'카드팩':'카드');};
+startCamera();
+</script>
+</body>
+</html>
